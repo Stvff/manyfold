@@ -62,21 +62,46 @@ Has :: struct {
 	right_top_corner: bool;
 }
 
-Line :: struct {
-	domain: Range;
-	equation: (float64) -> avec2;
-	normal: (float64) -> avec2;
+Triangle :: [3]int;
+
+main :: () {
+	square := Surface.{
+		u_domain = .{
+			0, 2, 5, .INCLUSIVE
+		},
+		v_domain = .{
+			0, 1, 5, .INCLUSIVE
+		},
+		equation = (uv: avec2) -> avec3 { return .{uv.x, uv.y, 0}; },
+	};
+
+	sphere := Surface.{
+		u_domain = .{
+			0, 2*PI, 20, .EXCL_END
+		},
+		v_domain = .{
+			0, 1, 20, .POLE_BEGIN
+		},
+		equation = (uv: avec2) -> avec3 { return .{uv.y*sin(uv.x), uv.y*cos(uv.x), 0}; },
+	};
+	sphere.u_end_attach = .{.U_BEGIN, *sphere};
+
+	already_done: [..]*Surface;
+
+	vertices: [..]avec3;
+	generate_vertices(*vertices, *sphere, *already_done);
+	print("%\n", vertices.count);
+
+	triangles: [..]Triangle;
+	array_reset(*already_done);
+	triangulate(*triangles, *sphere, *vertices, *already_done);
+	//print("%\n", triangles);
+
+	write_ply("square", vertices, triangles);
+
 }
 
-Triangle :: [3]u32;
-
-generate_vertices :: (vertices: *[..]avec3, using surface: *Surface) {
-	if !surface return;
-	surface_start = vertices.count;
-
-	du := (u_domain.end - u_domain.begin)/cast(float64, u_domain.resolution);
-	dv := (v_domain.end - v_domain.begin)/cast(float64, v_domain.resolution);
-
+reckon_has :: (using surface: *Surface) -> Has {
 	has: Has;
 	has.left_side = !cast(bool, u_domain.kind & .EXCL_POLE_BEGIN);
 	has.right_side = !cast(bool, u_domain.kind & .EXCL_POLE_END);
@@ -92,17 +117,29 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface) {
 	has.right_bottom_corner = (has.right_side && has.bottom_side) || has.right_pole;
 	has.left_top_corner = (has.left_side && has.top_side) || has.top_pole;
 	has.right_top_corner = (has.right_side && has.top_side);
+	return has;
+}
+
+generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_done: *[..]*Surface) {
+	if !surface return;
+	if array_find(already_done.*, surface) return;
+	surface_start = vertices.count;
+
+	du := (u_domain.end - u_domain.begin)/cast(float64, u_domain.resolution);
+	dv := (v_domain.end - v_domain.begin)/cast(float64, v_domain.resolution);
+
+	has := reckon_has(surface);
 
 	print("%\n", has);
-	for u_i: 0..u_domain.resolution {
-		u := u_domain.begin + u_i*du;
-		is_first_u := u_i == 0;
-		is_last_u := u_i == u_domain.resolution;
 	for v_i: 0..v_domain.resolution {
-		print("%, %; ", u_i, v_i);
 		v := v_domain.begin + v_i*dv;
 		is_first_v := v_i == 0;
 		is_last_v := v_i == v_domain.resolution;
+	for u_i: 0..u_domain.resolution {
+		//print("%, %; ", u_i, v_i);
+		u := u_domain.begin + u_i*du;
+		is_first_u := u_i == 0;
+		is_last_u := u_i == u_domain.resolution;
 
 		make_point := !(is_first_u || is_last_u || is_first_v || is_last_v);
 
@@ -117,36 +154,57 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface) {
 		make_point ||= has.top_side && is_last_v && !is_first_u && !is_last_u;
 
 		if !make_point {
-			print("skipped, \n");
+			//print("skipped, \n");
 			continue;
 		}
 
 		array_add(vertices, equation(.{u, v}));
 	}}
+	array_add(already_done, surface);
 
-	generate_vertices(vertices, u_begin_attach.surface);
-	generate_vertices(vertices, u_end_attach.surface);
-	generate_vertices(vertices, v_begin_attach.surface);
-	generate_vertices(vertices, v_end_attach.surface);
+	generate_vertices(vertices, u_begin_attach.surface, already_done);
+	generate_vertices(vertices, u_end_attach.surface, already_done);
+	generate_vertices(vertices, v_begin_attach.surface, already_done);
+	generate_vertices(vertices, v_end_attach.surface, already_done);
 }
 
-main :: () {
-	square := Surface.{
-		u_domain = .{
-			0, 2, 5, .INCLUSIVE
-		},
-		v_domain = .{
-			0, 1, 5, .INCLUSIVE
-		},
-		equation = (uv: avec2) -> avec3 { return .{uv.x, uv.y, 0}; },
-		normal = (uv: avec2) -> avec3 { return .{0, 0, 1}; }
-	};
+triangulate :: (triangles: *[..]Triangle, using surface: *Surface, vertices: *[..]avec3, already_done: *[..]*Surface) {
+	if !surface return;
+	if array_find(already_done.*, surface) return;
+	has := reckon_has(surface);
 
-	vertices: [..]avec3;
-	generate_vertices(*vertices, *square);
-	print("%\n", vertices);
-	write_ply("square", .[.{0, 0, 0}, .{0, 1, 0}, .{1, 0, 0}, .{1, 1, 0}], .[.[0, 1, 2], .[1, 3, 2]]);
+	row_size := u_domain.resolution + (ifx has.left_side then 1 else -1) + (ifx has.right_side then 1 else -1);
+	first_row := (ifx has.left_bottom_corner then 1 else 0) + (ifx has.bottom_side then u_domain.resolution-2 else 0) + (ifx has.right_bottom_corner then 1 else 0);
 
+	for v_i: 0..v_domain.resolution-1 {
+		is_first_v := v_i == 0;
+		is_last_v := v_i == v_domain.resolution;
+	for u_i: 0..u_domain.resolution-1 {
+		print("%, %;\n ", u_i, v_i);
+		is_first_u := u_i == 0;
+		is_last_u := u_i == u_domain.resolution;
+
+		triangle_a, triangle_b: Triangle;
+		triangle_a[0] = u_i + v_i*(u_domain.resolution+1);
+		triangle_a[1] = 1 + u_i + (1 + v_i)*(u_domain.resolution+1);
+		triangle_a[2] = u_i + (1 + v_i)*(u_domain.resolution+1);
+
+		triangle_b[0] = u_i + v_i*(u_domain.resolution+1);
+		triangle_b[1] = 1 + u_i + v_i*(u_domain.resolution+1);
+		triangle_b[2] = 1 + u_i + (1 + v_i)*(u_domain.resolution+1);
+
+		if !(triangle_a[0] == triangle_a[1] || triangle_a[1] == triangle_a[2] || triangle_a[0] == triangle_a[2])
+			array_add(triangles, triangle_a);
+		if !(triangle_b[0] == triangle_b[1] || triangle_b[1] == triangle_b[2] || triangle_b[0] == triangle_b[2])
+			array_add(triangles, triangle_b);
+
+	}}
+	array_add(already_done, surface);
+
+	triangulate(triangles, u_begin_attach.surface, vertices, already_done);
+	triangulate(triangles, u_end_attach.surface, vertices, already_done);
+	triangulate(triangles, v_begin_attach.surface, vertices, already_done);
+	triangulate(triangles, v_end_attach.surface, vertices, already_done);
 }
 
 write_ply :: (name: string, vertices: []avec3, faces: []Triangle) {
@@ -179,9 +237,9 @@ PLY_HEADER, vertices.count, faces.count);
 		evil_byte_face.data = xx *face;
 		evil_byte_face.count = 4;
 		array_add(*full_file, ..evil_byte_face);
-		evil_byte_face.data += 4;
+		evil_byte_face.data += 8;
 		array_add(*full_file, ..evil_byte_face);
-		evil_byte_face.data += 4;
+		evil_byte_face.data += 8;
 		array_add(*full_file, ..evil_byte_face);
 	}
 

@@ -25,12 +25,19 @@ Range :: struct {
 	kind: Range_Kind;
 }
 
+Has :: struct {
+	left_side, right_side, bottom_side, top_side,
+	left_pole, right_pole, bottom_pole, top_pole,
+	left_bottom_corner, right_bottom_corner, left_top_corner, right_top_corner: bool;
+}
+
 Surface :: struct {
 	u_domain: Range;
 	v_domain: Range;
 	equation: (avec2) -> avec3;
 	normal: (avec2) -> avec3;
 	surface_start: int;
+	has: Has;
 	u_begin_attach: Surface_Attachment;
 	u_end_attach: Surface_Attachment;
 	v_begin_attach: Surface_Attachment;
@@ -38,28 +45,11 @@ Surface :: struct {
 }
 
 Surface_Attachment_Kind :: enum u8 {
-	NOTHING; U_BEGIN; U_END; V_BEGIN; V_END;
+	U_BEGIN; U_END; V_BEGIN; V_END;
 }
 Surface_Attachment :: struct {
 	kind: Surface_Attachment_Kind;
 	surface: *Surface;
-}
-
-Has :: struct {
-	left_side,
-	right_side,
-	bottom_side,
-	top_side,
-
-	left_pole,
-	right_pole,
-	bottom_pole,
-	top_pole,
-
-	left_bottom_corner,
-	right_bottom_corner,
-	left_top_corner,
-	right_top_corner: bool;
 }
 
 Triangle :: [3]int;
@@ -77,32 +67,38 @@ main :: () {
 
 	sphere := Surface.{
 		u_domain = .{
-			0, 2*PI, 20, .EXCL_END
+			0, 2*PI, 50, .EXCL_END
 		},
 		v_domain = .{
-			0, 1, 20, .POLE_BEGIN
+			0, PI, 50, .DIPOLE
 		},
-		equation = (uv: avec2) -> avec3 { return .{uv.y*sin(uv.x), uv.y*cos(uv.x), 0}; },
+		equation = (uv: avec2) -> avec3 { return .{cos(uv.x)*sin(uv.y), sin(uv.x)*sin(uv.y), cos(uv.y)}; },
 	};
 	sphere.u_end_attach = .{.U_BEGIN, *sphere};
 
 	already_done: [..]*Surface;
 
+	the_main_surface := *sphere;
 	vertices: [..]avec3;
-	generate_vertices(*vertices, *sphere, *already_done);
-	print("%\n", vertices.count);
-
 	triangles: [..]Triangle;
+	generate_vertices(*vertices, the_main_surface, *already_done);
+	print("%\n", vertices.count);
 	array_reset(*already_done);
-	triangulate(*triangles, *sphere, *vertices, *already_done);
+	triangulate(*triangles, the_main_surface, *vertices, *already_done);
 	//print("%\n", triangles);
 
 	write_ply("square", vertices, triangles);
 
 }
 
-reckon_has :: (using surface: *Surface) -> Has {
-	has: Has;
+generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_done: *[..]*Surface) {
+	if !surface return;
+	if array_find(already_done.*, surface) return;
+	surface_start = vertices.count;
+
+	du := (u_domain.end - u_domain.begin)/cast(float64, u_domain.resolution);
+	dv := (v_domain.end - v_domain.begin)/cast(float64, v_domain.resolution);
+
 	has.left_side = !cast(bool, u_domain.kind & .EXCL_POLE_BEGIN);
 	has.right_side = !cast(bool, u_domain.kind & .EXCL_POLE_END);
 	has.bottom_side = !cast(bool, v_domain.kind & .EXCL_POLE_BEGIN);
@@ -117,18 +113,6 @@ reckon_has :: (using surface: *Surface) -> Has {
 	has.right_bottom_corner = (has.right_side && has.bottom_side) || has.right_pole;
 	has.left_top_corner = (has.left_side && has.top_side) || has.top_pole;
 	has.right_top_corner = (has.right_side && has.top_side);
-	return has;
-}
-
-generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_done: *[..]*Surface) {
-	if !surface return;
-	if array_find(already_done.*, surface) return;
-	surface_start = vertices.count;
-
-	du := (u_domain.end - u_domain.begin)/cast(float64, u_domain.resolution);
-	dv := (v_domain.end - v_domain.begin)/cast(float64, v_domain.resolution);
-
-	has := reckon_has(surface);
 
 	print("%\n", has);
 	for v_i: 0..v_domain.resolution {
@@ -168,30 +152,125 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_don
 	generate_vertices(vertices, v_end_attach.surface, already_done);
 }
 
+get_index :: (using surface: *Surface, u: int, v: int) -> int {
+	if u == 0 {
+		if has.left_pole then v = 0;
+	} else if u == u_domain.resolution {
+		if has.right_pole then v = 0;
+	}
+	if v == 0 {
+		if has.bottom_pole then u = 0;
+	} else if v == u_domain.resolution {
+		if has.top_pole then u = 0;
+	}
+
+	new_u := u;
+	new_v := v;
+	if u == 0 && u_domain.kind & .EXCL_BEGIN {
+		new_surface := u_begin_attach.surface;
+		if u_begin_attach.kind == {
+			case .U_BEGIN;
+				new_u = 0;
+				new_v = v_domain.resolution - v;
+			case .U_END;
+				new_u = new_surface.u_domain.resolution;
+				new_v = v;
+			case .V_BEGIN;
+				new_u = v;
+				new_v = 0;
+			case .V_END;
+				new_u = v_domain.resolution - v;
+				new_v = new_surface.v_domain.resolution;
+		}
+		return get_index(new_surface, new_u, new_v);
+	}
+	if u == u_domain.resolution && u_domain.kind & .EXCL_END {
+		new_surface := u_end_attach.surface;
+		if u_end_attach.kind == {
+			case .U_BEGIN;
+				new_u = 0;
+				new_v = v;
+			case .U_END;
+				new_u = new_surface.u_domain.resolution;
+				new_v = v_domain.resolution - v;
+			case .V_BEGIN;
+				new_u = v_domain.resolution - v;
+				new_v = 0;
+			case .V_END;
+				new_u = v;
+				new_v = new_surface.v_domain.resolution;
+		}
+		return get_index(new_surface, new_u, new_v);
+	}
+	if v == 0 && v_domain.kind & .EXCL_BEGIN {
+		new_surface := v_begin_attach.surface;
+		if v_begin_attach.kind == {
+			case .U_BEGIN;
+				new_u = 0;
+				new_v = u;
+			case .U_END;
+				new_u = new_surface.u_domain.resolution;
+				new_v = u_domain.resolution - u;
+			case .V_BEGIN;
+				new_u = u_domain.resolution - u;
+				new_v = 0;
+			case .V_END;
+				new_u = u;
+				new_v = new_surface.v_domain.resolution;
+		}
+		return get_index(new_surface, new_u, new_v);
+	}
+	if v == v_domain.resolution && v_domain.kind & .EXCL_END {
+		new_surface := v_end_attach.surface;
+		if v_end_attach.kind == {
+			case .U_BEGIN;
+				new_u = 0;
+				new_v = u_domain.resolution - u;
+			case .U_END;
+				new_u = new_surface.u_domain.resolution;
+				new_v = u;
+			case .V_BEGIN;
+				new_u = u;
+				new_v = 0;
+			case .V_END;
+				new_u = u_domain.resolution - u;
+				new_v = new_surface.v_domain.resolution;
+		}
+		return get_index(new_surface, new_u, new_v);
+	}
+
+	if v == 0 {
+		return surface_start + u;
+	}
+
+	bottom_row := (u_domain.resolution-1) * cast(int, has.bottom_side) + cast(int) has.left_bottom_corner + cast(int) has.right_bottom_corner;
+	row_size := (u_domain.resolution-1) + cast(int, has.left_side) + cast(int, has.right_side);
+
+	bottom_row -= cast(int, v == v_domain.resolution && !has.left_top_corner);
+
+	return u + bottom_row + (v-1)*row_size;
+}
+
 triangulate :: (triangles: *[..]Triangle, using surface: *Surface, vertices: *[..]avec3, already_done: *[..]*Surface) {
 	if !surface return;
 	if array_find(already_done.*, surface) return;
-	has := reckon_has(surface);
-
-	row_size := u_domain.resolution + (ifx has.left_side then 1 else -1) + (ifx has.right_side then 1 else -1);
-	first_row := (ifx has.left_bottom_corner then 1 else 0) + (ifx has.bottom_side then u_domain.resolution-2 else 0) + (ifx has.right_bottom_corner then 1 else 0);
 
 	for v_i: 0..v_domain.resolution-1 {
 		is_first_v := v_i == 0;
 		is_last_v := v_i == v_domain.resolution;
 	for u_i: 0..u_domain.resolution-1 {
-		print("%, %;\n ", u_i, v_i);
+		//print("%, %;\n ", u_i, v_i);
 		is_first_u := u_i == 0;
 		is_last_u := u_i == u_domain.resolution;
 
 		triangle_a, triangle_b: Triangle;
-		triangle_a[0] = u_i + v_i*(u_domain.resolution+1);
-		triangle_a[1] = 1 + u_i + (1 + v_i)*(u_domain.resolution+1);
-		triangle_a[2] = u_i + (1 + v_i)*(u_domain.resolution+1);
+		triangle_a[0] = get_index(surface, u_i, v_i);
+		triangle_a[1] = get_index(surface, 1 + u_i, 1 + v_i);
+		triangle_a[2] = get_index(surface, u_i, 1 + v_i);
 
-		triangle_b[0] = u_i + v_i*(u_domain.resolution+1);
-		triangle_b[1] = 1 + u_i + v_i*(u_domain.resolution+1);
-		triangle_b[2] = 1 + u_i + (1 + v_i)*(u_domain.resolution+1);
+		triangle_b[0] = get_index(surface, u_i, v_i);
+		triangle_b[1] = get_index(surface, 1 + u_i, v_i);
+		triangle_b[2] = get_index(surface, 1 + u_i, 1 + v_i);
 
 		if !(triangle_a[0] == triangle_a[1] || triangle_a[1] == triangle_a[2] || triangle_a[0] == triangle_a[2])
 			array_add(triangles, triangle_a);

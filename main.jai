@@ -32,6 +32,7 @@ Has :: struct {
 }
 
 Surface :: struct {
+	name: string;
 	u_domain: Range;
 	v_domain: Range;
 	equation: (avec2) -> avec3;
@@ -50,6 +51,7 @@ Surface_Attachment_Kind :: enum u8 {
 Surface_Attachment :: struct {
 	kind: Surface_Attachment_Kind;
 	surface: *Surface;
+	reversed := false;
 }
 
 Triangle :: [3]int;
@@ -70,15 +72,15 @@ main :: () {
 			0, 2*PI, 50, .EXCL_END
 		},
 		v_domain = .{
-			0, PI, 50, .DIPOLE
+			0, PI/2.0, 50, .POLE_BEGIN
 		},
 		equation = (uv: avec2) -> avec3 { return .{cos(uv.x)*sin(uv.y), sin(uv.x)*sin(uv.y), cos(uv.y)}; },
 	};
-	sphere.u_end_attach = .{.U_BEGIN, *sphere};
+	sphere.u_end_attach = .{.U_BEGIN, *sphere, false};
 
 	already_done: [..]*Surface;
 
-	the_main_surface := *sphere;
+	the_main_surface := make_vase();
 	vertices: [..]avec3;
 	triangles: [..]Triangle;
 	generate_vertices(*vertices, the_main_surface, *already_done);
@@ -87,7 +89,7 @@ main :: () {
 	triangulate(*triangles, the_main_surface, *vertices, *already_done);
 	//print("%\n", triangles);
 
-	write_ply("square", vertices, triangles);
+	write_ply("vase", vertices, triangles);
 
 }
 
@@ -114,7 +116,7 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_don
 	has.left_top_corner = (has.left_side && has.top_side) || has.top_pole;
 	has.right_top_corner = (has.right_side && has.top_side);
 
-	print("%\n", has);
+	print("generating vertices for: %\n", name);
 	for v_i: 0..v_domain.resolution {
 		v := v_domain.begin + v_i*dv;
 		is_first_v := v_i == 0;
@@ -164,80 +166,57 @@ get_index :: (using surface: *Surface, u: int, v: int) -> int {
 		if has.top_pole then u = 0;
 	}
 
-	new_u := u;
-	new_v := v;
+	attachment: Surface_Attachment;
+	rev_u := u_domain.resolution - u;
+	rev_v := v_domain.resolution - v;
+	new_t: [4]int;
+	rev_t: int;
+
 	if u == 0 && u_domain.kind & .EXCL_BEGIN {
-		new_surface := u_begin_attach.surface;
-		if u_begin_attach.kind == {
+		attachment = u_begin_attach;
+		new_t = .[rev_v, v, v, rev_v];
+		rev_t = v_domain.resolution;
+	} else if u == u_domain.resolution && u_domain.kind & .EXCL_END {
+		attachment = u_end_attach;
+		new_t = .[v, rev_v, rev_v, v];
+		rev_t = v_domain.resolution;
+	} else if v == 0 && v_domain.kind & .EXCL_BEGIN {
+		attachment = v_begin_attach;
+		new_t = .[u, rev_u, rev_u, u];
+		rev_t = u_domain.resolution;
+	} else if v == v_domain.resolution && v_domain.kind & .EXCL_END {
+		attachment = v_end_attach;
+		new_t = .[rev_u, u, u, rev_u];
+		rev_t = u_domain.resolution;
+	}
+
+	if attachment.surface {
+		if attachment.reversed {
+			new_t[0] = rev_t - new_t[0];
+			new_t[1] = rev_t - new_t[1];
+			new_t[2] = rev_t - new_t[2];
+			new_t[3] = rev_t - new_t[3];
+		}
+		new_u, new_v: int;
+		if attachment.kind == {
 			case .U_BEGIN;
 				new_u = 0;
-				new_v = v_domain.resolution - v;
+				new_v = new_t[0];
 			case .U_END;
-				new_u = new_surface.u_domain.resolution;
-				new_v = v;
+				new_u = attachment.surface.u_domain.resolution;
+				new_v = new_t[1];
 			case .V_BEGIN;
-				new_u = v;
+				new_u = new_t[2];
 				new_v = 0;
 			case .V_END;
-				new_u = v_domain.resolution - v;
-				new_v = new_surface.v_domain.resolution;
+				new_u = new_t[3];
+				new_v = attachment.surface.v_domain.resolution;
 		}
-		return get_index(new_surface, new_u, new_v);
+		i := get_index(attachment.surface, new_u, new_v);
+		print("% to %: %\n", name, attachment.surface.name, i);
+		return i;
 	}
-	if u == u_domain.resolution && u_domain.kind & .EXCL_END {
-		new_surface := u_end_attach.surface;
-		if u_end_attach.kind == {
-			case .U_BEGIN;
-				new_u = 0;
-				new_v = v;
-			case .U_END;
-				new_u = new_surface.u_domain.resolution;
-				new_v = v_domain.resolution - v;
-			case .V_BEGIN;
-				new_u = v_domain.resolution - v;
-				new_v = 0;
-			case .V_END;
-				new_u = v;
-				new_v = new_surface.v_domain.resolution;
-		}
-		return get_index(new_surface, new_u, new_v);
-	}
-	if v == 0 && v_domain.kind & .EXCL_BEGIN {
-		new_surface := v_begin_attach.surface;
-		if v_begin_attach.kind == {
-			case .U_BEGIN;
-				new_u = 0;
-				new_v = u;
-			case .U_END;
-				new_u = new_surface.u_domain.resolution;
-				new_v = u_domain.resolution - u;
-			case .V_BEGIN;
-				new_u = u_domain.resolution - u;
-				new_v = 0;
-			case .V_END;
-				new_u = u;
-				new_v = new_surface.v_domain.resolution;
-		}
-		return get_index(new_surface, new_u, new_v);
-	}
-	if v == v_domain.resolution && v_domain.kind & .EXCL_END {
-		new_surface := v_end_attach.surface;
-		if v_end_attach.kind == {
-			case .U_BEGIN;
-				new_u = 0;
-				new_v = u_domain.resolution - u;
-			case .U_END;
-				new_u = new_surface.u_domain.resolution;
-				new_v = u;
-			case .V_BEGIN;
-				new_u = u;
-				new_v = 0;
-			case .V_END;
-				new_u = u_domain.resolution - u;
-				new_v = new_surface.v_domain.resolution;
-		}
-		return get_index(new_surface, new_u, new_v);
-	}
+
 
 	if v == 0 {
 		return surface_start + u;
@@ -248,13 +227,14 @@ get_index :: (using surface: *Surface, u: int, v: int) -> int {
 
 	bottom_row -= cast(int, v == v_domain.resolution && !has.left_top_corner);
 
-	return u + bottom_row + (v-1)*row_size;
+	return surface_start + u + bottom_row + (v-1)*row_size;
 }
 
 triangulate :: (triangles: *[..]Triangle, using surface: *Surface, vertices: *[..]avec3, already_done: *[..]*Surface) {
 	if !surface return;
 	if array_find(already_done.*, surface) return;
 
+	print("triangulating: %\n", name);
 	for v_i: 0..v_domain.resolution-1 {
 		is_first_v := v_i == 0;
 		is_last_v := v_i == v_domain.resolution;
@@ -330,3 +310,4 @@ PLY_HEADER, vertices.count, faces.count);
 #import "Basic";
 #import "Math";
 #import "File";
+#load "vase.jai";

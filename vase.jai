@@ -94,14 +94,6 @@ inner_bottom_disk :: (uv: avec2) -> avec3 {
 	return .{xy.x, xy.y, VASE_THICKNESS};
 }
 
-rim_disk :: (uv: avec2) -> avec3 {
-	theta := uv.x;
-	x := uv.y;
-	xy := ring(theta, x);
-	return .{xy.x, xy.y, VASE_HEIGHT};
-}
-
-
 /* Common functions, could (should) be split off into its own file/library */
 ring :: (theta: float64, radius: float64) -> avec3 {
 	return .{radius*cos(theta), radius*sin(theta), 0};

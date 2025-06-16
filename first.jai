@@ -1,6 +1,6 @@
 #run build();
 
-exe_name :: "gvec";
+exe_name :: "manyfold";
 do_run_when_done := true;
 
 build :: () {

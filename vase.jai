@@ -2,8 +2,8 @@ VASE_HEIGHT :: 2;
 VASE_BASE_RADIUS :: 0.5;
 VASE_THICKNESS :: 0.06;
 
-ROTATIONAL_RES :: 70;
-HEIGHT_RES :: 30;
+ROTATIONAL_RES :: 120;
+HEIGHT_RES :: 50;
 
 vase_surfaces: [..]Surface;
 
@@ -39,7 +39,7 @@ make_vase :: () -> *Surface {
 	inner_body.* = Surface.{
 		name = "inner body",
 		u_domain = .{ 0, 2*PI, ROTATIONAL_RES, .EXCL_END },
-		v_domain = .{ VASE_THICKNESS, VASE_HEIGHT, HEIGHT_RES, .EXCL_BEGIN | .EXCL_END},
+		v_domain = .{ VASE_THICKNESS, VASE_HEIGHT, HEIGHT_RES/3, .EXCL_BEGIN | .EXCL_END},
 		equation = vase_inner_body,
 		v_begin_attach = .{.V_END, inner_bottom, false},
 		v_end_attach = .{.V_END, body, true},

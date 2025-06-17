@@ -54,10 +54,35 @@ Surface_Attachment :: struct {
 	reversed := false;
 }
 
+Volume_Fault :: enum_flags {
+	MISSING_SURFACE_AT_U_BEGIN;
+	MISSING_SURFACE_AT_U_END;
+	MISSING_SURFACE_AT_V_BEGIN;
+	MISSING_SURFACE_AT_V_END;
+
+	OPEN_EDGE_AT_U_BEGIN;
+	OPEN_EDGE_AT_U_END;
+	OPEN_EDGE_AT_V_BEGIN;
+	OPEN_EDGE_AT_V_END;
+
+	MISMATCHED_RESOLUTION_AT_U_BEGIN;
+	MISMATCHED_RESOLUTION_AT_U_END;
+	MISMATCHED_RESOLUTION_AT_V_BEGIN;
+	MISMATCHED_RESOLUTION_AT_V_END;
+
+	EMPTY_SURFACE;
+	NO_FAULTS :: 0;
+	MISSING_SURFACE :: MISSING_SURFACE_AT_U_BEGIN | MISSING_SURFACE_AT_U_END | MISSING_SURFACE_AT_V_BEGIN | MISSING_SURFACE_AT_V_END;
+	OPEN_EDGE :: OPEN_EDGE_AT_U_BEGIN | OPEN_EDGE_AT_U_END | OPEN_EDGE_AT_V_BEGIN | OPEN_EDGE_AT_V_END;
+	MISMATCHED_RESOLUTION :: MISMATCHED_RESOLUTION_AT_U_BEGIN | MISMATCHED_RESOLUTION_AT_U_END | MISMATCHED_RESOLUTION_AT_V_BEGIN | MISMATCHED_RESOLUTION_AT_U_END;
+	ALL_FAULTS :: MISSING_SURFACE | OPEN_EDGE | MISMATCHED_RESOLUTION | EMPTY_SURFACE;
+}
+
 Triangle :: [3]int;
 
 main :: () {
 	square := Surface.{
+		name = "square",
 		u_domain = .{
 			0, 2, 5, .INCLUSIVE
 		},
@@ -68,32 +93,105 @@ main :: () {
 	};
 
 	sphere := Surface.{
+		name = "sphere",
 		u_domain = .{
 			0, 2*PI, 50, .EXCL_END
 		},
 		v_domain = .{
-			0, PI/2.0, 50, .POLE_BEGIN
+			0, PI, 50, .DIPOLE
 		},
 		equation = (uv: avec2) -> avec3 { return .{cos(uv.x)*sin(uv.y), sin(uv.x)*sin(uv.y), cos(uv.y)}; },
 	};
+	sphere.u_begin_attach = .{.U_END, *sphere, false};
 	sphere.u_end_attach = .{.U_BEGIN, *sphere, false};
 
-	already_done: [..]*Surface;
-
-	the_main_surface := make_vase();
-	vertices: [..]avec3;
-	triangles: [..]Triangle;
-	generate_vertices(*vertices, the_main_surface, *already_done);
-	print("%\n", vertices.count);
-	array_reset(*already_done);
-	triangulate(*triangles, the_main_surface, *vertices, *already_done);
-	//print("%\n", triangles);
-
-	write_ply("vase", vertices, triangles);
-
+	ply_from_surface(*square, .NO_FAULTS);
+	ply_from_surface(*sphere);
+	ply_from_surface(make_vase());
 }
 
-generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_done: *[..]*Surface) {
+verify_volume :: (surface: *Surface) -> Volume_Fault {
+	recurse :: (surface: *Surface, already_done: *[..]*Surface) -> Volume_Fault {
+	if !surface return .EMPTY_SURFACE;
+	if array_find(already_done.*, surface) return 0;
+	log("verifying: %\n", surface.name);
+
+	for 0..3 {
+		begin := Range_Kind.EXCL_BEGIN;
+		end := Range_Kind.EXCL_END;
+		attach: Surface_Attachment;
+		domain_tc: Range;
+		domain_orth: Range;
+		domain_mask: Range_Kind;
+		if it == {
+		case 0; attach = surface.u_begin_attach;
+			domain_tc = surface.u_domain;
+			domain_orth = surface.v_domain;
+			domain_mask = .EXCL_BEGIN;
+		case 1; attach = surface.u_end_attach;
+			domain_tc = surface.u_domain;
+			domain_orth = surface.v_domain;
+			domain_mask = .EXCL_END;
+		case 2; attach = surface.v_begin_attach;
+			domain_tc = surface.v_domain;
+			domain_orth = surface.u_domain;
+			domain_mask = .EXCL_BEGIN;
+		case 3; attach = surface.v_end_attach;
+			domain_tc = surface.v_domain;
+			domain_orth = surface.u_domain;
+			domain_mask = .EXCL_END;
+		}
+		//print("%, %, %\n", attach, domain_tc, domain_mask);
+		if domain_tc.kind & domain_mask == domain_mask {
+			if attach.surface == null return xx 1 << it;
+		} else { /* so this is the case if this edge is inclusive */
+			if attach.surface == null {
+				if domain_mask == .EXCL_BEGIN && domain_tc.kind & .POLE_BEGIN continue;
+				else if domain_mask == .EXCL_END && domain_tc.kind & .POLE_END continue;
+				return xx 1 << it;
+			}
+			begin = 0;
+			end = 0;
+		}
+
+		if attach.kind == {
+		case .U_BEGIN;
+			if attach.surface.u_domain.kind & .EXCL_BEGIN == begin return xx 1 << (it + 4);
+			if attach.surface.v_domain.resolution != domain_orth.resolution return xx 1 << (it + 8);
+		case .U_END;
+			if attach.surface.u_domain.kind & .EXCL_END == end return xx 1 << (it + 4);
+			if attach.surface.v_domain.resolution != domain_orth.resolution return xx 1 << (it + 8);
+		case .V_BEGIN;
+			if attach.surface.v_domain.kind & .EXCL_BEGIN == begin return xx 1 << (it + 4);
+			if attach.surface.u_domain.resolution != domain_orth.resolution return xx 1 << (it + 8);
+		case .V_END;
+			if attach.surface.v_domain.kind & .EXCL_END == end return xx 1 << (it + 4);
+			if attach.surface.u_domain.resolution != domain_orth.resolution return xx 1 << (it + 8);
+		}
+	}
+	array_add(already_done, surface);
+
+	fault: Volume_Fault;
+	if surface.u_begin_attach.surface
+		fault |= recurse(surface.u_begin_attach.surface, already_done);
+	if surface.u_end_attach.surface
+		fault |= recurse(surface.u_end_attach.surface, already_done);
+	if surface.v_begin_attach.surface
+		fault |= recurse(surface.v_begin_attach.surface, already_done);
+	if surface.v_end_attach.surface
+		fault |= recurse(surface.v_end_attach.surface, already_done);
+
+	return fault;
+	}
+
+	already_done: [..]*Surface;
+	was_ok := recurse(surface, *already_done);
+	array_reset(*already_done);
+	return was_ok;
+}
+
+generate_vertices :: (vertices: *[..]avec3, surface: *Surface) {
+	recurse :: (vertices: *[..]avec3, using surface: *Surface, already_done: *[..]*Surface) {
 	if !surface return;
 	if array_find(already_done.*, surface) return;
 	surface_start = vertices.count;
@@ -116,7 +214,7 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_don
 	has.left_top_corner = (has.left_side && has.top_side) || has.top_pole;
 	has.right_top_corner = (has.right_side && has.top_side);
 
-	print("generating vertices for: %\n", name);
+	log("generating vertices for: %\n", name);
 	for v_i: 0..v_domain.resolution {
 		v := v_domain.begin + v_i*dv;
 		is_first_v := v_i == 0;
@@ -148,10 +246,15 @@ generate_vertices :: (vertices: *[..]avec3, using surface: *Surface, already_don
 	}}
 	array_add(already_done, surface);
 
-	generate_vertices(vertices, u_begin_attach.surface, already_done);
-	generate_vertices(vertices, u_end_attach.surface, already_done);
-	generate_vertices(vertices, v_begin_attach.surface, already_done);
-	generate_vertices(vertices, v_end_attach.surface, already_done);
+	recurse(vertices, u_begin_attach.surface, already_done);
+	recurse(vertices, u_end_attach.surface, already_done);
+	recurse(vertices, v_begin_attach.surface, already_done);
+	recurse(vertices, v_end_attach.surface, already_done);
+	}
+
+	already_done: [..]*Surface;
+	recurse(vertices, surface, *already_done);
+	array_reset(*already_done);
 }
 
 get_index :: (using surface: *Surface, u: int, v: int) -> int {
@@ -213,7 +316,7 @@ get_index :: (using surface: *Surface, u: int, v: int) -> int {
 				new_v = attachment.surface.v_domain.resolution;
 		}
 		i := get_index(attachment.surface, new_u, new_v);
-		print("% to %: %\n", name, attachment.surface.name, i);
+		//print("% to %: %\n", name, attachment.surface.name, i);
 		return i;
 	}
 
@@ -230,11 +333,12 @@ get_index :: (using surface: *Surface, u: int, v: int) -> int {
 	return surface_start + u + bottom_row + (v-1)*row_size;
 }
 
-triangulate :: (triangles: *[..]Triangle, using surface: *Surface, vertices: *[..]avec3, already_done: *[..]*Surface) {
+triangulate :: (vertices: *[..]avec3, triangles: *[..]Triangle, surface: *Surface) {
+	recurse :: (vertices: *[..]avec3, triangles: *[..]Triangle, using surface: *Surface, already_done: *[..]*Surface) {
 	if !surface return;
 	if array_find(already_done.*, surface) return;
 
-	print("triangulating: %\n", name);
+	log("triangulating: %\n", name);
 	for v_i: 0..v_domain.resolution-1 {
 		is_first_v := v_i == 0;
 		is_last_v := v_i == v_domain.resolution;
@@ -260,10 +364,38 @@ triangulate :: (triangles: *[..]Triangle, using surface: *Surface, vertices: *[.
 	}}
 	array_add(already_done, surface);
 
-	triangulate(triangles, u_begin_attach.surface, vertices, already_done);
-	triangulate(triangles, u_end_attach.surface, vertices, already_done);
-	triangulate(triangles, v_begin_attach.surface, vertices, already_done);
-	triangulate(triangles, v_end_attach.surface, vertices, already_done);
+	recurse(vertices, triangles, u_begin_attach.surface, already_done);
+	recurse(vertices, triangles, u_end_attach.surface, already_done);
+	recurse(vertices, triangles, v_begin_attach.surface, already_done);
+	recurse(vertices, triangles, v_end_attach.surface, already_done);
+	}
+
+	already_done: [..]*Surface;
+	recurse(vertices, triangles, surface, *already_done);
+	array_reset(*already_done);
+}
+
+ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS) -> Volume_Fault {
+	vertices: [..]avec3;
+	triangles: [..]Triangle;
+	defer {
+		array_reset(*vertices);
+		array_reset(*triangles);
+	}
+
+	fault := verify_volume(surface);
+	log("% has %\n", surface.name, fault);
+	if fault & volume_fault_mask {
+		return fault;
+	}
+
+	generate_vertices(*vertices, surface);
+	triangulate(*vertices, *triangles, surface);
+	log("% vertices\n", vertices.count);
+	log("% triangles\n", triangles.count);
+
+	write_ply(surface.name, vertices, triangles);
+	return .NO_FAULTS;
 }
 
 write_ply :: (name: string, vertices: []avec3, faces: []Triangle) {
@@ -271,7 +403,7 @@ write_ply :: (name: string, vertices: []avec3, faces: []Triangle) {
 	print(*sb, #string PLY_HEADER
 ply
 format binary_little_endian 1.0
-comment made by meeee >:3
+comment made by manyfold :3
 element vertex %1
 property double x
 property double y

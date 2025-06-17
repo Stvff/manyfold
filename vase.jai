@@ -16,13 +16,14 @@ make_vase :: () -> *Surface {
 	rim := *(vase_surfaces[4]);
 
 	body.* = Surface.{
-		name = "body",
+		name = "vase",
 		u_domain = .{ 0, 2*PI, ROTATIONAL_RES, .EXCL_END },
 		v_domain = .{ 0, VASE_HEIGHT, HEIGHT_RES, .EXCL_BEGIN },
 		equation = vase_body,
 		v_begin_attach = .{.V_END, bottom, false},
 		v_end_attach = .{.V_END, inner_body, true},
 	};
+	body.u_begin_attach = .{.U_END, body, false};
 	body.u_end_attach = .{.U_BEGIN, body, false};
 
 	bottom.* = Surface.{
@@ -32,6 +33,7 @@ make_vase :: () -> *Surface {
 		equation = bottom_disk,
 		v_end_attach = .{.V_BEGIN, body, false},
 	};
+	bottom.u_begin_attach = .{.U_END, bottom, false};
 	bottom.u_end_attach = .{.U_BEGIN, bottom, false};
 
 	inner_body.* = Surface.{
@@ -42,6 +44,7 @@ make_vase :: () -> *Surface {
 		v_begin_attach = .{.V_END, inner_bottom, false},
 		v_end_attach = .{.V_END, body, true},
 	};
+	inner_body.u_begin_attach = .{.U_END, inner_body, false};
 	inner_body.u_end_attach = .{.U_BEGIN, inner_body, false};
 
 	inner_bottom.* = Surface.{
@@ -51,6 +54,7 @@ make_vase :: () -> *Surface {
 		equation = inner_bottom_disk,
 		v_end_attach = .{.V_BEGIN, inner_body, false},
 	};
+	inner_bottom.u_begin_attach = .{.U_END, inner_bottom, false};
 	inner_bottom.u_end_attach = .{.U_BEGIN, inner_bottom, false};
 
 	return body;

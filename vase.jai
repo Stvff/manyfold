@@ -30,7 +30,7 @@ make_vase :: () -> *Surface {
 		name = "bottom",
 		u_domain = .{ 0, 2*PI, ROTATIONAL_RES, .EXCL_END },
 		v_domain = .{ 0, VASE_BASE_RADIUS, 1, .POLE_BEGIN},
-		equation = bottom_disk,
+		equation = disk,
 		v_end_attach = .{.V_BEGIN, body, false},
 	};
 	bottom.u_begin_attach = .{.U_END, bottom, false};
@@ -65,9 +65,9 @@ vase_body :: (uv: avec2) -> avec3 {
 	z := uv.y;
 
 	offset := ring(theta, VASE_BASE_RADIUS);
-	i, j, k := ring_basis_vectors(theta);
+	ijk := ring_basis(theta);
 	profile := vase_side_profile(z);
-	return profile.x*i + profile.y*j + profile.z*k + offset;
+	return offset + ijk*profile;
 }
 
 vase_inner_body :: (uv: avec2) -> avec3 {
@@ -75,37 +75,15 @@ vase_inner_body :: (uv: avec2) -> avec3 {
 	z := uv.y;
 
 	offset := ring(theta, VASE_BASE_RADIUS - VASE_THICKNESS);
-	i, j, k := ring_basis_vectors(theta);
+	ijk := ring_basis(theta);
 	profile := vase_side_profile(z);
-	return profile.x*i + profile.y*j + profile.z*k + offset;
+	return offset + ijk*profile;
 }
 
 vase_side_profile :: (z: float64) -> avec3 {
 	return .{0.1*sin(z*(1.75*PI)/VASE_HEIGHT), 0, z};
 }
 
-bottom_disk :: (uv: avec2) -> avec3 {
-	theta := uv.x;
-	x := uv.y;
-	xy := ring(theta, x);
-	return .{xy.x, xy.y, 0};
-}
-
 inner_bottom_disk :: (uv: avec2) -> avec3 {
-	theta := uv.x;
-	x := uv.y;
-	xy := ring(theta, x);
-	return .{xy.x, xy.y, VASE_THICKNESS};
-}
-
-/* Common functions, could (should) be split off into its own file/library */
-ring :: (theta: float64, radius: float64) -> avec3 {
-	return .{radius*cos(theta), radius*sin(theta), 0};
-}
-
-ring_basis_vectors :: (theta: float64) -> avec3, avec3, avec3 {
-	i := avec3.{cos(theta), sin(theta), 0};
-	j := avec3.{-sin(theta), cos(theta), 0};
-	k := avec3.{0, 0, 1};
-	return i, j, k;
+	return disk(uv) + .{0, 0, VASE_THICKNESS};
 }

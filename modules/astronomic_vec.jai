@@ -1,3 +1,5 @@
+/*** Vectors ***/
+
 avec2 :: struct {
     x, y: float64;
 
@@ -108,6 +110,30 @@ lerp :: (a: avec2, b: avec2, t: float64) -> avec2 {
 
 lerp :: (a: avec3, b: avec3, t: float64) -> avec3 {
 	return (1 - t)*a + t*b;
+}
+
+/*** Matrices ***/
+
+amat3 :: struct { /* column-major because it is convenient for basisvector calculations */
+	/* these numbers are _rowcol */
+	_11, _21, _31: float64;
+	_12, _22, _32: float64;
+	_13, _23, _33: float64;
+
+	#place _11; col:  [3]avec3;
+	#place _11; coef: [3][3]float64;
+}
+
+operator * :: (mat: amat3, vec: avec3) -> avec3 {
+	return mat.col[0]*vec.x + mat.col[1]*vec.y + mat.col[2]*vec.z;
+}
+
+operator * :: (a: amat3, b: amat3) -> amat3 {
+	c: amat3 = ---;
+	c.col[0] = a.col[0]*b._11 + a.col[1]*b._21 + b.col[2]*b._31;
+	c.col[1] = a.col[0]*b._12 + a.col[1]*b._22 + b.col[2]*b._32;
+	c.col[0] = a.col[0]*b._13 + a.col[1]*b._23 + b.col[2]*b._33;
+	return c;
 }
 
 #import "Math";

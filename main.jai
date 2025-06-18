@@ -28,7 +28,28 @@ main :: () {
 	ply_from_surface(make_vase());
 }
 
+disk :: (uv: avec2) -> avec3 {
+	theta := uv.x;
+	r := uv.y;
+	xy := ring(theta, r);
+	return .{xy.x, xy.y, 0};
+}
+
+ring :: (theta: float64, radius: float64) -> avec3 {
+	return .{radius*cos(theta), radius*sin(theta), 0};
+}
+
+ring_basis :: (theta: float64) -> amat3 {
+	return .{ col = .[
+		.{cos(theta), sin(theta), 0},
+		.{-sin(theta), cos(theta), 0},
+		.{0, 0, 1}
+	]};
+}
+
 #load "vase.jai";
+#load "ship.jai";
+
 #import "geoalg64";
 #import "Basic";
 #import "Math";

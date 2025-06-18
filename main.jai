@@ -23,9 +23,10 @@ main :: () {
 	sphere.u_begin_attach = .{.U_END, *sphere, false};
 	sphere.u_end_attach = .{.U_BEGIN, *sphere, false};
 
-	ply_from_surface(*square, .NO_FAULTS);
-	ply_from_surface(*sphere);
-	ply_from_surface(make_vase());
+	ply_from_surface(*square, .NO_FAULTS, format = .STL);
+	ply_from_surface(*sphere, format = .STL);
+	ply_from_surface(make_vase(), format = .STL);
+	ply_from_surface(ship(), .NO_FAULTS, format = .STL);
 }
 
 disk :: (uv: avec2) -> avec3 {

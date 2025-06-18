@@ -32,7 +32,7 @@ Surface :: struct {
 	u_domain: Range;
 	v_domain: Range;
 	equation: (avec2) -> avec3;
-	normal: (avec2) -> avec3;
+	//normal: (avec2) -> avec3;
 	surface_start: int;
 	has: Has;
 	u_begin_attach: Surface_Attachment;
@@ -341,7 +341,11 @@ triangulate :: (vertices: *[..]avec3, triangles: *[..]Triangle, surface: *Surfac
 	array_reset(*already_done);
 }
 
-ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS) -> Volume_Fault {
+FILE_FORMAT :: enum {
+	PLY; STL;
+}
+
+ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS, format := FILE_FORMAT.PLY) -> Volume_Fault {
 	vertices: [..]avec3;
 	triangles: [..]Triangle;
 	defer {
@@ -360,7 +364,10 @@ ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FA
 	log("% vertices\n", vertices.count);
 	log("% triangles\n", triangles.count);
 
-	write_ply(surface.name, vertices, triangles);
+	if format == {
+	case .PLY; write_ply(surface.name, vertices, triangles);
+	case .STL; write_stl(surface.name, vertices, triangles);
+	}
 	return .NO_FAULTS;
 }
 
@@ -401,6 +408,44 @@ PLY_HEADER, vertices.count, faces.count);
 	}
 
 	write_entire_file(sprint("%.ply", name), full_file.data, full_file.count);
+	reset(*sb);
+}
+
+write_stl :: (name: string, vertices: []avec3, faces: []Triangle) {
+	sb: String_Builder;
+	print(*sb, "Exported by manyfold :3", vertices.count, faces.count);
+
+	full_file: [..]u8;
+	defer array_reset(*full_file);
+	array_add(*full_file, ..cast([]u8) builder_to_string(*sb));
+	array_resize(*full_file, 84);
+
+	ptr_triangle_count := cast(*u32) *(full_file[80]);
+	ptr_triangle_count.* = cast(u32) faces.count;
+
+	stl_face: [4][3]float32;
+	for face: faces {
+		/* leaving the normal unset for now */
+		stl_face[1][0] = xx vertices[face[0]].x;
+		stl_face[1][1] = xx vertices[face[0]].y;
+		stl_face[1][2] = xx vertices[face[0]].z;
+
+		stl_face[2][0] = xx vertices[face[1]].x;
+		stl_face[2][1] = xx vertices[face[1]].y;
+		stl_face[2][2] = xx vertices[face[1]].z;
+
+		stl_face[3][0] = xx vertices[face[2]].x;
+		stl_face[3][1] = xx vertices[face[2]].y;
+		stl_face[3][2] = xx vertices[face[2]].z;
+
+		evil_byte_face: []u8;
+		evil_byte_face.data = xx *stl_face;
+		evil_byte_face.count = size_of(type_of(stl_face));
+		array_add(*full_file, ..evil_byte_face);
+		array_add(*full_file, 0, 0); /* attribute */
+	}
+
+	write_entire_file(sprint("%.stl", name), full_file.data, full_file.count);
 	reset(*sb);
 }
 

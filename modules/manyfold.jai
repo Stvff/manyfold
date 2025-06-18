@@ -342,7 +342,7 @@ triangulate :: (vertices: *[..]avec3, triangles: *[..]Triangle, surface: *Surfac
 }
 
 FILE_FORMAT :: enum {
-	PLY; STL;
+	PLY; STL; OBJ;
 }
 
 ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS, format := FILE_FORMAT.PLY) -> Volume_Fault {
@@ -367,6 +367,7 @@ ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FA
 	if format == {
 	case .PLY; write_ply(surface.name, vertices, triangles);
 	case .STL; write_stl(surface.name, vertices, triangles);
+	case .OBJ; write_obj(surface.name, vertices, triangles);
 	}
 	return .NO_FAULTS;
 }
@@ -413,7 +414,7 @@ PLY_HEADER, vertices.count, faces.count);
 
 write_stl :: (name: string, vertices: []avec3, faces: []Triangle) {
 	sb: String_Builder;
-	print(*sb, "Exported by manyfold :3", vertices.count, faces.count);
+	print(*sb, "Exported by manyfold :3\n");
 
 	full_file: [..]u8;
 	defer array_reset(*full_file);
@@ -446,6 +447,26 @@ write_stl :: (name: string, vertices: []avec3, faces: []Triangle) {
 	}
 
 	write_entire_file(sprint("%.stl", name), full_file.data, full_file.count);
+	reset(*sb);
+}
+
+write_obj :: (name: string, vertices: []avec3, faces: []Triangle) {
+	sb: String_Builder;
+	print(*sb, "# Exported by manyfold :3\n\n");
+
+	for vertex: vertices {
+		print(*sb, "v % % %\n", vertex.x, vertex.y, vertex.z);
+	}
+	print(*sb, "s 0\n");
+	for face: faces {
+		print(*sb, "f % % %\n", face[0] + 1, face[1] + 1, face[2] + 1);
+	}
+
+	full_file: [..]u8;
+	defer array_reset(*full_file);
+	array_add(*full_file, ..cast([]u8) builder_to_string(*sb));
+
+	write_entire_file(sprint("%.obj", name), full_file.data, full_file.count);
 	reset(*sb);
 }
 

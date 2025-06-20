@@ -24,28 +24,43 @@ ship :: () -> *Surface {
 	return ship;
 }
 
+sharpness: float64 = 0.7;
+
 ship_floor_fan :: (uv: avec2) -> avec3 {
 	x := uv.x;
 	out := uv.y;
 
-	sharpness: float64 = 0.7;
-	pole := avec3.{0, sharpness*25, 0};
-	lower_curve_offset := avec3.{x, sharpness*x*x, 0};
-
-	return lerp(pole, lower_curve_offset, out);
+	pole := avec3.{0, 0, 0};
+	return lerp(pole, lower_curve_offset(x), out);
 }
 
 flap_contour :: (uv: avec2) -> avec3 {
 	x := uv.x;
 	out := uv.y;
 
-	sharpness: float64 = 0.7;
-	upper_curve_offset := avec3.{2*x, sharpness*x*x, 3};
-	lower_curve_offset := avec3.{x, sharpness*x*x, 0};
+	p: avec3 = ---;
+	delta := upper_curve_offset(x) - lower_curve_offset(x);
 
-	return lerp(lower_curve_offset, upper_curve_offset, out);
 
-//	return curve_offset + parabola_basis(x, sharpness)*up;
+	delta.x = 0;
+	return lerp(lower_curve_offset(x), upper_curve_offset(x), out);
+}
+
+upper_curve_offset :: (x: float64) -> avec3 {
+	return lower_curve_offset(x) + .{0, 0, 3};
+}
+
+lower_curve_offset :: (x: float64) -> avec3 {
+	semi_major :: 5.0;
+	semi_minor :: 3.0;
+	xi: float64 = ---;
+	sign := ifx x >= 0 then 1 else -1;
+	if sign == 1 {
+		xi = semi_major - x;
+	} else {
+		xi = x + semi_major;
+	}
+	return .{xi, sign*(semi_minor/semi_major)*sqrt(semi_major*semi_major - xi*xi), 0};
 }
 
 parabola_basis :: (x: float64, a: float64) -> amat3 {

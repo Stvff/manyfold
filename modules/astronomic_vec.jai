@@ -50,8 +50,7 @@ normalize :: (v: avec2, $epsilon := 0.0, $fallback := avec2.{}) -> avec2 {
 	}
 
 	inv_mag := 1/mag;
-	v *= inv_mag;
-	return v;
+	return v*inv_mag;
 }
 
 normalize :: (v: avec3, $epsilon := 0.0, $fallback := avec3.{}) -> avec3 {

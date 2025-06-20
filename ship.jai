@@ -7,15 +7,15 @@ ship :: () -> *Surface {
 
 	ship.* = .{
 		name = "ship",
-		u_domain = .{-5, 5, 20, .INCLUSIVE},
-		v_domain = .{0, 1, 3, .EXCL_BEGIN},
+		u_domain = .{-PI/2, +PI/2, 20, .INCLUSIVE},
+		v_domain = .{0, 1, 6, .EXCL_BEGIN},
 		equation = flap_contour,
 		v_begin_attach = .{.V_END, ship_floor, false},
 	};
 
 	ship_floor.* = .{
 		name = "ship floor",
-		u_domain = .{-5, 5, 20, .INCLUSIVE},
+		u_domain = .{-PI/2, +PI/2, 20, .INCLUSIVE},
 		v_domain = .{0, 1, 2, .POLE_BEGIN},
 		equation = ship_floor_fan,
 		v_end_attach = .{.V_BEGIN, ship, false},
@@ -38,29 +38,32 @@ flap_contour :: (uv: avec2) -> avec3 {
 	x := uv.x;
 	out := uv.y;
 
-	p: avec3 = ---;
 	delta := upper_curve_offset(x) - lower_curve_offset(x);
+	//delta.xy = normalize(delta.xy);
 
+	b: amat3 = ---;
+	b.col[0] = .{delta.x, delta.y, 0};
+	b.col[1] = .{delta.y, delta.x, 0};
+	b.col[2] = .{0, 0, delta.z};
 
-	delta.x = 0;
-	return lerp(lower_curve_offset(x), upper_curve_offset(x), out);
+	max_angle := PI/2;
+	vi := ellipse((1 - out)*max_angle, 1, 1);
+	v := avec3.{vi.x, 0, 1 - vi.y};
+
+	return lower_curve_offset(x) + b*v;
+//	return lerp(lower_curve_offset(x), upper_curve_offset(x), out);
 }
 
-upper_curve_offset :: (x: float64) -> avec3 {
-	return lower_curve_offset(x) + .{0, 0, 3};
+upper_curve_offset :: (theta: float64) -> avec3 {
+	return ellipse(theta, 17, 6) + .{0, 0, 2};
 }
 
-lower_curve_offset :: (x: float64) -> avec3 {
-	semi_major :: 5.0;
-	semi_minor :: 3.0;
-	xi: float64 = ---;
-	sign := ifx x >= 0 then 1 else -1;
-	if sign == 1 {
-		xi = semi_major - x;
-	} else {
-		xi = x + semi_major;
-	}
-	return .{xi, sign*(semi_minor/semi_major)*sqrt(semi_major*semi_major - xi*xi), 0};
+lower_curve_offset :: (theta: float64) -> avec3 {
+	return ellipse(theta, 15, 3);
+}
+
+ellipse :: (theta: float64, semi_major: float64, semi_minor: float64) -> avec3 {
+	return .{semi_major*cos(theta), semi_minor*sin(theta), 0};
 }
 
 parabola_basis :: (x: float64, a: float64) -> amat3 {

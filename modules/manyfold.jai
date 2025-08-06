@@ -345,7 +345,7 @@ FILE_FORMAT :: enum {
 	PLY; STL; OBJ;
 }
 
-ply_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS, format := FILE_FORMAT.PLY) -> Volume_Fault {
+file_from_surface :: (surface: *Surface, volume_fault_mask := Volume_Fault.ALL_FAULTS, format := FILE_FORMAT.PLY) -> Volume_Fault {
 	vertices: [..]avec3;
 	triangles: [..]Triangle;
 	defer {

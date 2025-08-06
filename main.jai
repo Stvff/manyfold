@@ -23,10 +23,10 @@ main :: () {
 	// sphere.u_begin_attach = .{.U_END, *sphere, false};
 	// sphere.u_end_attach = .{.U_BEGIN, *sphere, false};
 
-	// ply_from_surface(*square, .NO_FAULTS, format = .OBJ);
-	// ply_from_surface(*sphere, format = .OBJ);
-	// ply_from_surface(make_vase(), format = .OBJ);
-	ply_from_surface(ship(), .NO_FAULTS, format = .STL);
+	// file_from_surface(*square, .NO_FAULTS, format = .OBJ);
+	// file_from_surface(*sphere, format = .OBJ);
+	// file_from_surface(make_vase(), format = .OBJ);
+	file_from_surface(airco(), .NO_FAULTS, format = .OBJ);
 }
 
 disk :: (uv: avec2) -> avec3 {
@@ -50,6 +50,7 @@ ring_basis :: (theta: float64) -> amat3 {
 
 #load "vase.jai";
 #load "ship.jai";
+#load "airco.jai";
 
 #import "geoalg64";
 #import "Basic";
